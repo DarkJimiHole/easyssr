@@ -16,7 +16,7 @@ It focuses on a simple menu-driven workflow so you can deploy `ss-rust`, manage 
 ## Usage
 
 ```bash
-sudo bash <(curl -Ls https://raw.githubusercontent.com/DarkJimiHole/easyssr/main/ssr.sh)
+sudo bash <(curl -Ls https://raw.githubusercontent.com/DarkJimiHole/easyssr/main/install.sh)
 ```
 
 ## Menu
@@ -46,7 +46,7 @@ sudo bash <(curl -Ls https://raw.githubusercontent.com/DarkJimiHole/easyssr/main
 - The project uses `2022-blake3-aes-128-gcm` by default.
 - If password input is empty, the script generates a random base64 password automatically.
 - Ports are validated before use.
-- This repository stores the script as `ssr.sh`, while the installed runtime command is `ssr`.
+- This repository stores the script as `install.sh`, while the installed runtime command is `ssr`.
 
 ## License
 
