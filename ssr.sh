@@ -11,7 +11,9 @@ SSR_UNIT="/etc/systemd/system/${SSR_SERVICE_NAME}.service"
 SSR_METHOD="2022-blake3-aes-128-gcm"
 SCRIPT_RAW_URL="https://raw.githubusercontent.com/DarkJimiHole/easyssr/main/ssr.sh"
 CN_LIST_URL="https://raw.githubusercontent.com/Hackl0us/GeoIP2-CN/release/CN-ip-cidr.txt"
-COMMON_SERVICE_NAMES=("ss-rust" "shadowsocks-rust" "ssr")
+COMMON_SERVICE_NAMES=("ss-rust" "shadowsocks-rust" "ssr" "ssserver")
+COMMON_CONFIG_DIRS=("/etc/ssr" "/etc/ss-rust" "/etc/shadowsocks-rust")
+COMMON_UNIT_DIRS=("/etc/systemd/system" "/lib/systemd/system" "/usr/lib/systemd/system")
 SCRIPT_VERSION="v1.1"
 
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
@@ -346,22 +348,28 @@ status_line() {
 
 detect_existing_install() {
   local found=1
-  local name
+  local name unit_dir unit_path config_dir
 
-  if [ -x "$SSR_BIN" ] || [ -f "$SSR_CONFIG" ] || [ -f "$SSR_UNIT" ]; then
-    return 0
+  if [ -x "$SSR_BIN" ]; then
+    echo_warn "Detected leftover binary: $SSR_BIN"
+    found=0
   fi
 
-  for name in "${COMMON_SERVICE_NAMES[@]}"; do
-    if [ -f "/etc/systemd/system/${name}.service" ] || [ -f "/lib/systemd/system/${name}.service" ] || [ -f "/usr/lib/systemd/system/${name}.service" ]; then
+  for config_dir in "${COMMON_CONFIG_DIRS[@]}"; do
+    if [ -d "$config_dir" ]; then
+      echo_warn "Detected leftover config directory: $config_dir"
       found=0
-      break
     fi
+  done
 
-    if [ -d "/etc/${name}" ]; then
-      found=0
-      break
-    fi
+  for name in "${COMMON_SERVICE_NAMES[@]}"; do
+    for unit_dir in "${COMMON_UNIT_DIRS[@]}"; do
+      unit_path="${unit_dir}/${name}.service"
+      if [ -f "$unit_path" ]; then
+        echo_warn "Detected leftover service unit: $unit_path"
+        found=0
+      fi
+    done
   done
 
   return "$found"
@@ -821,16 +829,27 @@ install_ssr() {
 }
 
 uninstall_ssr() {
+  local name unit_dir config_dir
+
   if have_cmd systemctl; then
-    systemctl stop "$SSR_SERVICE_NAME" >/dev/null 2>&1 || true
-    systemctl disable "$SSR_SERVICE_NAME" >/dev/null 2>&1 || true
-    systemctl reset-failed "$SSR_SERVICE_NAME" >/dev/null 2>&1 || true
+    for name in "${COMMON_SERVICE_NAMES[@]}"; do
+      systemctl stop "$name" >/dev/null 2>&1 || true
+      systemctl disable "$name" >/dev/null 2>&1 || true
+      systemctl reset-failed "$name" >/dev/null 2>&1 || true
+    done
   fi
 
-  rm -f "$SSR_UNIT"
+  for name in "${COMMON_SERVICE_NAMES[@]}"; do
+    for unit_dir in "${COMMON_UNIT_DIRS[@]}"; do
+      rm -f "${unit_dir}/${name}.service"
+    done
+  done
+
   rm -f "$SSR_BIN"
-  rm -rf "$SSR_DIR"
   rm -f "$SSR_CMD"
+  for config_dir in "${COMMON_CONFIG_DIRS[@]}"; do
+    rm -rf "$config_dir"
+  done
 
   if have_cmd systemctl; then
     systemctl daemon-reload >/dev/null 2>&1 || true
