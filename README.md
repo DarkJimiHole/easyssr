@@ -16,7 +16,7 @@ It focuses on a simple menu-driven workflow so you can deploy `ss-rust`, manage 
 ## Usage
 
 ```bash
-sudo bash <(curl -Ls https://raw.githubusercontent.com/DarkJimiHole/easyssr/main/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/DarkJimiHole/easyssr/main/install.sh)
 ```
 
 ## Menu
