@@ -13,32 +13,10 @@ It focuses on a simple menu-driven workflow so you can deploy `ss-rust`, manage 
 - Enable or disable CN block ACL rules
 - Install itself as the `ssr` command on Linux
 
-## Requirements
-
-- Linux with `bash`
-- Root privileges
-- `systemd`
-- Internet access for downloading releases and ACL data
-
 ## Usage
 
-Download the script and run it as root:
-
 ```bash
-chmod +x ssr.sh
-sudo bash ssr.sh
-```
-
-After the first run, the script installs itself to:
-
-```bash
-/usr/local/bin/ssr
-```
-
-Then you can start it anytime with:
-
-```bash
-sudo ssr
+bash <(curl -Ls https://raw.githubusercontent.com/DarkJimiHole/easyssr/main/ssr.sh)
 ```
 
 ## Menu
