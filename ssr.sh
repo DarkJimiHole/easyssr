@@ -846,7 +846,6 @@ uninstall_ssr() {
   done
 
   rm -f "$SSR_BIN"
-  rm -f "$SSR_CMD"
   for config_dir in "${COMMON_CONFIG_DIRS[@]}"; do
     rm -rf "$config_dir"
   done
@@ -855,7 +854,7 @@ uninstall_ssr() {
     systemctl daemon-reload >/dev/null 2>&1 || true
   fi
 
-  echo_ok "ss-rust and shortcut script were removed."
+  echo_ok "ss-rust and related files were removed."
 }
 
 add_user() {
