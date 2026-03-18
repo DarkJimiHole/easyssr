@@ -1,0 +1,75 @@
+# EasySSR
+
+EasySSR is an interactive Bash script for installing and managing `shadowsocks-rust` on Linux servers.
+
+It focuses on a simple menu-driven workflow so you can deploy `ss-rust`, manage users, view configuration, and switch CN block rules without editing files by hand.
+
+## Features
+
+- Install the latest `shadowsocks-rust` release automatically
+- Uninstall `shadowsocks-rust` and clean related files
+- Add and delete users in multi-user config mode
+- View server configuration and generate share links
+- Enable or disable CN block ACL rules
+- Install itself as the `ssr` command on Linux
+
+## Requirements
+
+- Linux with `bash`
+- Root privileges
+- `systemd`
+- Internet access for downloading releases and ACL data
+
+## Usage
+
+Download the script and run it as root:
+
+```bash
+chmod +x ssr.sh
+sudo bash ssr.sh
+```
+
+After the first run, the script installs itself to:
+
+```bash
+/usr/local/bin/ssr
+```
+
+Then you can start it anytime with:
+
+```bash
+sudo ssr
+```
+
+## Menu
+
+```text
+1. Install ss-rust
+2. Uninstall ss-rust
+3. Add user
+4. View ss-rust config
+5. Enable/Disable CN block
+6. Delete user
+7. Uninstall this script
+0. Exit
+```
+
+## What The Script Manages
+
+- `ssserver` binary: `/usr/local/bin/ssserver`
+- shortcut command: `/usr/local/bin/ssr`
+- config directory: `/etc/ssr`
+- config file: `/etc/ssr/config.json`
+- ACL file: `/etc/ssr/black_list.acl`
+- systemd service: `/etc/systemd/system/ssr.service`
+
+## Notes
+
+- The project uses `2022-blake3-aes-128-gcm` by default.
+- If password input is empty, the script generates a random base64 password automatically.
+- Ports are validated before use.
+- This repository stores the script as `ssr.sh`, while the installed runtime command is `ssr`.
+
+## License
+
+Use at your own risk.
