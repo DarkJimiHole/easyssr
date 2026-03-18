@@ -9,6 +9,7 @@ SSR_CONFIG="$SSR_DIR/config.json"
 SSR_ACL="$SSR_DIR/black_list.acl"
 SSR_UNIT="/etc/systemd/system/${SSR_SERVICE_NAME}.service"
 SSR_METHOD="2022-blake3-aes-128-gcm"
+SCRIPT_RAW_URL="https://raw.githubusercontent.com/DarkJimiHole/easyssr/main/ssr.sh"
 CN_LIST_URL="https://raw.githubusercontent.com/Hackl0us/GeoIP2-CN/release/CN-ip-cidr.txt"
 COMMON_SERVICE_NAMES=("ss-rust" "shadowsocks-rust" "ssr")
 SCRIPT_VERSION="v1.1"
@@ -80,13 +81,36 @@ require_root() {
 }
 
 self_install() {
-  local self target
+  local self target tmp_file
   target="$SSR_CMD"
   self=$(readlink -f "$0" 2>/dev/null || echo "$0")
 
-  if [ -r "$self" ] && [ "$self" != "$target" ]; then
-    install -m 0755 "$self" "$target"
+  if [ "$self" = "$target" ]; then
+    return 0
   fi
+
+  if [ -f "$self" ] && [ -r "$self" ]; then
+    install -m 0755 "$self" "$target"
+    return 0
+  fi
+
+  # When executed via `bash <(curl ...)`, $0 usually points to a transient
+  # file descriptor path that cannot be copied reliably. In that case, fetch
+  # the published script again and install it as the shortcut target.
+  if ! ensure_fetch_cmd >/dev/null 2>&1; then
+    echo_warn "Unable to install shortcut automatically from stdin execution."
+    return 0
+  fi
+
+  tmp_file=$(mktemp)
+  if download_file "$SCRIPT_RAW_URL" "$tmp_file"; then
+    install -m 0755 "$tmp_file" "$target"
+    rm -f "$tmp_file"
+    return 0
+  fi
+
+  rm -f "$tmp_file"
+  echo_warn "Failed to install shortcut automatically. You can rerun the script from a local file."
 }
 
 detect_pkg_mgr() {
