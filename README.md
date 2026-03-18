@@ -11,7 +11,7 @@ It focuses on a simple menu-driven workflow so you can deploy `ss-rust`, manage 
 - Add and delete users in multi-user config mode
 - View server configuration and generate share links
 - Enable or disable CN block ACL rules
-- Install itself as the `ssr` command on Linux
+- Shorcut `ssr` 
 
 ## Usage
 
