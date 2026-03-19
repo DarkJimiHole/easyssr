@@ -25,10 +25,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/DarkJimiHole/easyssr/main/inst
 1. Install ss-rust
 2. Uninstall ss-rust
 3. Add user
-4. View ss-rust config
-5. Enable/Disable CN block
+4. View configuration
+5. Turn CN block on/off
 6. Delete user
-7. Uninstall this script
+7. Uninstall script
 0. Exit
 ```
 

@@ -14,7 +14,7 @@ CN_LIST_URL="https://raw.githubusercontent.com/Hackl0us/GeoIP2-CN/release/CN-ip-
 COMMON_SERVICE_NAMES=("ss-rust" "shadowsocks-rust" "ssr" "ssserver")
 COMMON_CONFIG_DIRS=("/etc/ssr" "/etc/ss-rust" "/etc/shadowsocks-rust")
 COMMON_UNIT_DIRS=("/etc/systemd/system" "/lib/systemd/system" "/usr/lib/systemd/system")
-SCRIPT_VERSION="v1.1"
+SCRIPT_VERSION="v1.2"
 
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
   C_RESET="\033[0m"
@@ -40,16 +40,42 @@ color() {
   printf "%b%s%b" "$c" "$*" "$C_RESET"
 }
 
+echo_info() {
+  printf "%b[%s]%b %s\n" "$C_BLUE" "INFO" "$C_RESET" "$*"
+}
+
 echo_err() {
-  printf "%b%s%b\n" "$C_RED" "$*" "$C_RESET" >&2
+  printf "%b[%s]%b %s\n" "$C_RED" "ERROR" "$C_RESET" "$*" >&2
 }
 
 echo_warn() {
-  printf "%b%s%b\n" "$C_YELLOW" "$*" "$C_RESET"
+  printf "%b[%s]%b %s\n" "$C_YELLOW" "WARN" "$C_RESET" "$*"
 }
 
 echo_ok() {
-  printf "%b%s%b\n" "$C_GREEN" "$*" "$C_RESET"
+  printf "%b[%s]%b %s\n" "$C_GREEN" "OK" "$C_RESET" "$*"
+}
+
+prompt_input() {
+  printf "%b[%s]%b %s" "$C_CYAN" "INPUT" "$C_RESET" "$*" >&2
+  IFS= read -r REPLY
+}
+
+pause_for_menu() {
+  echo ""
+  prompt_input "Press Enter to return to the menu..."
+}
+
+print_section() {
+  printf "\n%b[%s]%b\n" "$C_GREEN" "$*" "$C_RESET"
+}
+
+print_menu_item() {
+  local key="$1"
+  local label="$2"
+  local key_color="${3:-$C_CYAN}"
+  local label_color="${4:-$C_RESET}"
+  printf "  %b[%s]%b %b%s%b\n" "$key_color" "$key" "$C_RESET" "$label_color" "$label" "$C_RESET"
 }
 
 center_text() {
@@ -191,7 +217,7 @@ ensure_cmd_pkgmap() {
     return 1
   fi
 
-  echo "Installing missing command: $cmd"
+  echo_info "Installing missing command: $cmd"
   install_pkg "$mgr" "$pkg"
   have_cmd "$cmd"
 }
@@ -331,18 +357,18 @@ status_line() {
   elif have_cmd systemctl && systemctl is-active --quiet "$SSR_SERVICE_NAME"; then
     state=$(color "$C_GREEN" "running")
   else
-    state=$(color "$C_YELLOW" "installed but not running")
+    state=$(color "$C_YELLOW" "installed, not running")
   fi
 
   if acl_enabled; then
-    acl_state=$(color "$C_GREEN" "CN block on")
+    acl_state=$(color "$C_GREEN" "enabled")
   else
-    acl_state=$(color "$C_YELLOW" "CN block off")
+    acl_state=$(color "$C_YELLOW" "disabled")
   fi
 
-  echo "$(color "$C_BOLD" "Status:") $state"
+  echo "$(color "$C_BOLD" "Service:") $state"
   if [ -f "$SSR_CONFIG" ] || [ -f "$SSR_UNIT" ]; then
-    echo "$(color "$C_BOLD" "ACL:") $acl_state"
+    echo "$(color "$C_BOLD" "CN block:") $acl_state"
   fi
 }
 
@@ -441,7 +467,8 @@ read_port() {
   local status
 
   while true; do
-    read -r -p "$prompt" port
+    prompt_input "$prompt"
+    port="$REPLY"
 
     if ! is_port_valid "$port"; then
       echo_err "Port must be 1-65535."
@@ -458,7 +485,7 @@ read_port() {
       continue
     fi
     if [ "$status" -eq 2 ]; then
-      echo_err "Unable to verify port usage. Please install ss or lsof."
+      echo_err "Unable to verify port usage. Please install ss or lsof first."
       return 1
     fi
 
@@ -477,7 +504,8 @@ prompt_yes_no() {
   local answer
 
   while true; do
-    read -r -p "$prompt" answer
+    prompt_input "$prompt"
+    answer="$REPLY"
     answer="${answer,,}"
 
     if [ -z "$answer" ]; then
@@ -515,7 +543,8 @@ read_password() {
   local password decoded_len
 
   while true; do
-    read -r -p "$prompt" password
+    prompt_input "$prompt"
+    password="$REPLY"
 
     if [ -z "$password" ]; then
       generate_password
@@ -529,7 +558,7 @@ read_password() {
 
     decoded_len=$(base64_decoded_len "$password")
     if [ "$decoded_len" -ne 16 ]; then
-      echo_err "Password must decode to 16 bytes, for example: openssl rand -base64 16"
+      echo_err "Password must decode to 16 bytes. Example: openssl rand -base64 16"
       continue
     fi
 
@@ -645,9 +674,17 @@ restart_service() {
     return 0
   fi
 
-  systemctl daemon-reload
+  if ! systemctl daemon-reload; then
+    echo_err "Failed to reload systemd units."
+    return 1
+  fi
   systemctl enable "$SSR_SERVICE_NAME" >/dev/null 2>&1 || true
-  systemctl restart "$SSR_SERVICE_NAME"
+  if ! systemctl restart "$SSR_SERVICE_NAME"; then
+    echo_err "Failed to restart service: $SSR_SERVICE_NAME"
+    return 1
+  fi
+
+  return 0
 }
 
 show_config_table() {
@@ -657,14 +694,14 @@ show_config_table() {
   fi
 
   ensure_json_tool || {
-    echo_err "Need python3 or jq to view config."
+    echo_err "python3 or jq is required to view the configuration."
     return 1
   }
 
   local local_ip
   local_ip=$(get_local_ip)
 
-  printf "%-8s %-15s %-8s %-28s %-28s\n" "User" "IP" "Port" "Password" "Method"
+  printf "%-8s %-15s %-8s %-28s %-28s\n" "ID" "IP" "Port" "Password" "Method"
   printf "%-8s %-15s %-8s %-28s %-28s\n" "----" "---------------" "--------" "----------------------------" "----------------------------"
 
   if have_cmd python3; then
@@ -779,7 +816,7 @@ install_ssr() {
   tmp_dir=$(mktemp -d)
   tmp_archive="${tmp_dir}/${archive}"
 
-  echo "Downloading $archive"
+  echo_info "Downloading release archive: $archive"
   if ! download_file "$url" "$tmp_archive"; then
     rm -rf "$tmp_dir"
     echo_err "Failed to download release archive."
@@ -803,17 +840,21 @@ install_ssr() {
     return 1
   fi
 
-  port=$(read_port "Enter server port: ") || {
+  port=$(read_port "Enter the server port: ") || {
     rm -rf "$tmp_dir"
     return 1
   }
-  password=$(read_password "Enter password (base64, empty to generate): ")
+  password=$(read_password "Enter a password (base64). Leave blank to generate one: ")
 
   install -m 0755 "${tmp_dir}/ssserver" "$SSR_BIN"
   write_config_single "$port" "$password"
 
-  if prompt_yes_no "Enable block CN (y/N)? " "no"; then
-    build_acl_file
+  if prompt_yes_no "Enable the CN block ACL? [y/N]: " "no"; then
+    if ! build_acl_file; then
+      rm -rf "$tmp_dir"
+      echo_err "Failed to build the CN block ACL."
+      return 1
+    fi
     write_service_unit "yes"
   else
     rm -f "$SSR_ACL"
@@ -821,7 +862,7 @@ install_ssr() {
   fi
 
   rm -rf "$tmp_dir"
-  restart_service
+  restart_service || return 1
 
   echo_ok "Installed successfully."
   echo ""
@@ -865,7 +906,7 @@ add_user() {
 
   ensure_cmd_pkgmap openssl openssl openssl openssl openssl openssl || return 1
   ensure_json_tool || {
-    echo_err "Need python3 or jq to update config."
+    echo_err "python3 or jq is required to update the configuration."
     return 1
   }
   ensure_port_check_tool || return 1
@@ -873,7 +914,7 @@ add_user() {
   local port password tmp_file
 
   while true; do
-    port=$(read_port "Enter new user port: ") || return 1
+    port=$(read_port "Enter a port for the new user: ") || return 1
     if is_port_in_config "$port"; then
       echo_err "Port $port already exists in the config."
       continue
@@ -881,11 +922,11 @@ add_user() {
     break
   done
 
-  password=$(read_password "Enter new password (base64, empty to generate): ")
+  password=$(read_password "Enter a password for the new user (base64). Leave blank to generate one: ")
   tmp_file=$(mktemp)
 
   if have_cmd python3; then
-    python3 - "$SSR_CONFIG" "$port" "$password" "$SSR_METHOD" > "$tmp_file" <<'PY'
+    if ! python3 - "$SSR_CONFIG" "$port" "$password" "$SSR_METHOD" > "$tmp_file" <<'PY'
 import json, sys
 
 path = sys.argv[1]
@@ -917,8 +958,13 @@ else:
 json.dump(output, sys.stdout, indent=2)
 sys.stdout.write("\n")
 PY
+    then
+      rm -f "$tmp_file"
+      echo_err "Failed to update the configuration file."
+      return 1
+    fi
   else
-    jq --argjson port "$port" --arg password "$password" --arg method "$SSR_METHOD" '
+    if ! jq --argjson port "$port" --arg password "$password" --arg method "$SSR_METHOD" '
       if (.servers | type?) == "array" then
         .servers += [{
           server: "::",
@@ -947,11 +993,15 @@ PY
           ]
         }
       end
-    ' "$SSR_CONFIG" > "$tmp_file"
+    ' "$SSR_CONFIG" > "$tmp_file"; then
+      rm -f "$tmp_file"
+      echo_err "Failed to update the configuration file."
+      return 1
+    fi
   fi
 
   mv "$tmp_file" "$SSR_CONFIG"
-  restart_service
+  restart_service || return 1
 
   echo_ok "User added."
   show_config_table || true
@@ -964,7 +1014,7 @@ delete_user() {
   fi
 
   ensure_json_tool || {
-    echo_err "Need python3 or jq to update config."
+    echo_err "python3 or jq is required to update the configuration."
     return 1
   }
 
@@ -976,10 +1026,10 @@ delete_user() {
     return 1
   fi
 
-  echo ""
-  echo "Current users:"
+  print_section "Configured users"
   show_config_table || true
-  read -r -p "Enter user index to delete (1..$count): " idx
+  prompt_input "Enter the user index to delete [1-$count]: "
+  idx="$REPLY"
 
   if [[ ! "$idx" =~ ^[0-9]+$ ]] || [ "$idx" -lt 1 ] || [ "$idx" -gt "$count" ]; then
     echo_err "Invalid user index."
@@ -988,7 +1038,7 @@ delete_user() {
 
   tmp_file=$(mktemp)
   if have_cmd python3; then
-    python3 - "$SSR_CONFIG" "$idx" > "$tmp_file" <<'PY'
+    if ! python3 - "$SSR_CONFIG" "$idx" > "$tmp_file" <<'PY'
 import json, sys
 
 path = sys.argv[1]
@@ -1007,21 +1057,32 @@ output = servers[0] if len(servers) == 1 else data
 json.dump(output, sys.stdout, indent=2)
 sys.stdout.write("\n")
 PY
+    then
+      rm -f "$tmp_file"
+      echo_err "Failed to update the configuration file."
+      return 1
+    fi
   else
-    jq --argjson idx "$idx" '
+    if ! jq --argjson idx "$idx" '
       .servers |= (to_entries | map(select(.key != ($idx - 1))) | map(.value))
       | if (.servers | length) == 1 then .servers[0] else . end
-    ' "$SSR_CONFIG" > "$tmp_file"
+    ' "$SSR_CONFIG" > "$tmp_file"; then
+      rm -f "$tmp_file"
+      echo_err "Failed to update the configuration file."
+      return 1
+    fi
   fi
 
   mv "$tmp_file" "$SSR_CONFIG"
-  restart_service
+  restart_service || return 1
 
   echo_ok "User deleted."
   show_config_table || true
 }
 
 view_config() {
+  local -a user_fields
+
   if [ ! -f "$SSR_CONFIG" ]; then
     echo_err "Config not found: $SSR_CONFIG"
     return 1
@@ -1031,10 +1092,11 @@ view_config() {
 
   ensure_cmd_pkgmap openssl openssl openssl openssl openssl openssl || return 1
 
-  echo ""
+  print_section "Server configuration"
   show_config_table || return 1
   count=$(get_user_count)
-  read -r -p "Enter user index to generate share link (Enter to return): " idx
+  prompt_input "Enter a user index to generate a share link, or press Enter to return: "
+  idx="$REPLY"
 
   if [ -z "${idx:-}" ]; then
     return 0
@@ -1061,8 +1123,8 @@ view_config() {
   ss_link="ss://${encoded_credentials}@${ip}:${port}#${node_name}"
 
   echo ""
-  echo "$(color "$C_GREEN" "Share link:") ${ss_link}"
-  read -r -p "Press Enter to return to menu..." _
+  echo "$(color "$C_GREEN" "share link:") ${ss_link}"
+  pause_for_menu
 }
 
 uninstall_script() {
@@ -1076,12 +1138,12 @@ uninstall_script() {
   self=$(readlink -f "$0" 2>/dev/null || echo "$0")
   if [ -f "$SSR_CMD" ]; then
     rm -f "$SSR_CMD"
-    echo_ok "Shortcut script removed: $SSR_CMD"
+    echo_ok "Script removed: $SSR_CMD"
   elif [ "$self" = "$SSR_CMD" ]; then
     rm -f "$SSR_CMD"
-    echo_ok "Shortcut script removed: $SSR_CMD"
+    echo_ok "Script removed: $SSR_CMD"
   else
-    echo_warn "Shortcut script not found: $SSR_CMD"
+    echo_warn "Script not found: $SSR_CMD"
   fi
 }
 
@@ -1093,28 +1155,31 @@ toggle_acl() {
 
   ensure_fetch_cmd || return 1
 
-  if prompt_yes_no "Enable block CN (y/N)? " "no"; then
-    build_acl_file
+  if prompt_yes_no "Enable the CN block ACL? [y/N]: " "no"; then
+    if ! build_acl_file; then
+      echo_err "Failed to build the CN block ACL."
+      return 1
+    fi
     write_service_unit "yes"
   else
     rm -f "$SSR_ACL"
     write_service_unit "no"
   fi
 
-  restart_service
-  echo_ok "ACL updated."
+  restart_service || return 1
+  echo_ok "ACL settings updated."
 }
 
 print_menu() {
   echo ""
-  echo "$(color "$C_CYAN" "1.") Install ss-rust"
-  echo "$(color "$C_CYAN" "2.") Uninstall ss-rust"
-  echo "$(color "$C_CYAN" "3.") Add user"
-  echo "$(color "$C_CYAN" "4.") View ss-rust config"
-  echo "$(color "$C_CYAN" "5.") Enable/Disable CN block"
-  echo "$(color "$C_CYAN" "6.") Delete user"
-  echo "$(color "$C_CYAN" "7.") Uninstall this script"
-  echo "$(color "$C_CYAN" "0.") Exit"
+  print_menu_item "1" "Install ss-rust"
+  print_menu_item "2" "Uninstall ss-rust"
+  print_menu_item "3" "Add user"
+  print_menu_item "4" "View configuration"
+  print_menu_item "5" "Turn CN block on/off"
+  print_menu_item "6" "Delete user"
+  print_menu_item "7" "Uninstall script"
+  print_menu_item "0" "Exit"
 }
 
 print_header() {
@@ -1122,7 +1187,7 @@ print_header() {
   local divider left_text right_label right_value padding
   divider=$(printf '%*s' "$width" '' | tr ' ' '-')
   left_text="shadowsocks-rust script ${SCRIPT_VERSION}"
-  right_label="Shortcut: "
+  right_label="Command: "
   right_value="ssr"
   padding=$(( width - ${#left_text} - ${#right_label} - ${#right_value} ))
   if [ "$padding" -lt 1 ]; then
@@ -1152,22 +1217,23 @@ run_menu_action() {
     return 0
   fi
 
-  echo ""
-  read -r -p "Press Enter to return to menu..." _
+  pause_for_menu
   return 0
 }
 
 main() {
+  local choice
+
   require_root
   self_install
 
   while true; do
     print_header
     status_line
-    echo ""
-    printf "[%s]\n" "$(color "$C_GREEN" "MENU")"
+    print_section "MENU"
     print_menu
-    read -r -p "Select: " choice
+    prompt_input "Enter a menu number [0-7]: "
+    choice="$REPLY"
 
     case "$choice" in
       1) run_menu_action install_ssr ;;
@@ -1180,11 +1246,10 @@ main() {
         if uninstall_script; then
           exit 0
         fi
-        echo ""
-        read -r -p "Press Enter to return to menu..." _
+        pause_for_menu
         ;;
       0) exit 0 ;;
-      *) echo "Invalid choice" ;;
+      *) echo_err "Invalid menu number." ;;
     esac
   done
 }
