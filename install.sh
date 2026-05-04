@@ -14,7 +14,7 @@ CN_LIST_URL="https://raw.githubusercontent.com/Hackl0us/GeoIP2-CN/release/CN-ip-
 COMMON_SERVICE_NAMES=("ss-rust" "shadowsocks-rust" "ssr" "ssserver")
 COMMON_CONFIG_DIRS=("/etc/ssr" "/etc/ss-rust" "/etc/shadowsocks-rust")
 COMMON_UNIT_DIRS=("/etc/systemd/system" "/lib/systemd/system" "/usr/lib/systemd/system")
-SCRIPT_VERSION="v1.2"
+SCRIPT_VERSION="v1.3"
 
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
   C_RESET="\033[0m"
@@ -315,6 +315,22 @@ get_local_ip() {
   echo "$ip"
 }
 
+ipv6_available() {
+  if [ -r /proc/sys/net/ipv6/conf/all/disable_ipv6 ] && [ "$(cat /proc/sys/net/ipv6/conf/all/disable_ipv6 2>/dev/null)" = "1" ]; then
+    return 1
+  fi
+
+  [ -s /proc/net/if_inet6 ]
+}
+
+get_server_bind_address() {
+  if ipv6_available; then
+    echo "::"
+  else
+    echo "0.0.0.0"
+  fi
+}
+
 get_user_count() {
   if [ ! -f "$SSR_CONFIG" ]; then
     echo "0"
@@ -608,11 +624,14 @@ get_release_target() {
 write_config_single() {
   local port="$1"
   local password="$2"
+  local bind_address
+
+  bind_address=$(get_server_bind_address)
 
   mkdir -p "$SSR_DIR"
   cat > "$SSR_CONFIG" <<EOF
 {
-  "server": "::",
+  "server": "$bind_address",
   "server_port": $port,
   "password": "$password",
   "method": "$SSR_METHOD",
@@ -911,7 +930,9 @@ add_user() {
   }
   ensure_port_check_tool || return 1
 
-  local port password tmp_file
+  local port password tmp_file bind_address
+
+  bind_address=$(get_server_bind_address)
 
   while true; do
     port=$(read_port "Enter a port for the new user: ") || return 1
@@ -926,19 +947,20 @@ add_user() {
   tmp_file=$(mktemp)
 
   if have_cmd python3; then
-    if ! python3 - "$SSR_CONFIG" "$port" "$password" "$SSR_METHOD" > "$tmp_file" <<'PY'
+    if ! python3 - "$SSR_CONFIG" "$port" "$password" "$SSR_METHOD" "$bind_address" > "$tmp_file" <<'PY'
 import json, sys
 
 path = sys.argv[1]
 port = int(sys.argv[2])
 password = sys.argv[3]
 method = sys.argv[4]
+bind_address = sys.argv[5]
 
 with open(path, "r", encoding="utf-8") as f:
     data = json.load(f)
 
 new_server = {
-    "server": "::",
+    "server": bind_address,
     "server_port": port,
     "password": password,
     "method": method,
@@ -964,10 +986,10 @@ PY
       return 1
     fi
   else
-    if ! jq --argjson port "$port" --arg password "$password" --arg method "$SSR_METHOD" '
+    if ! jq --argjson port "$port" --arg password "$password" --arg method "$SSR_METHOD" --arg bind_address "$bind_address" '
       if (.servers | type?) == "array" then
         .servers += [{
-          server: "::",
+          server: $bind_address,
           server_port: $port,
           password: $password,
           method: $method,
@@ -981,7 +1003,7 @@ PY
           servers: [
             .,
             {
-              server: "::",
+              server: $bind_address,
               server_port: $port,
               password: $password,
               method: $method,

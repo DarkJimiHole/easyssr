@@ -46,6 +46,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/DarkJimiHole/easyssr/main/inst
 - The project uses `2022-blake3-aes-128-gcm` by default.
 - If password input is empty, the script generates a random base64 password automatically.
 - Ports are validated before use.
+- If IPv6 is unavailable or disabled, the script binds the server to `0.0.0.0` automatically.
 - This repository stores the script as `install.sh`, while the installed runtime command is `ssr`.
 
 ## License
